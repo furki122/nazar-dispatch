@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nazar Dispatch – Fahrer & Routen</title>
+  <link rel="icon" href="data:,">
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- XLSX -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+
+<!-- Google Places Autocomplete (required for address correction modal) -->
+<script
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBx7d3Xv9XXJqXRpRDC3sKwfySetf9sou8&libraries=places&loading=async"
+  async
+  defer
+></script>
+
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <!-- Auth Overlay -->
+  <div id="authOverlay" class="overlay">
+    <div class="auth-card">
+      <div class="auth-head">
+        <div class="auth-logo">🚚</div>
+        <div>
+          <div class="auth-title">Nazar Dispatch</div>
+          <div class="auth-sub">Login / Register</div>
+        </div>
+        <div class="spacer"></div>
+        <span class="pill" id="authEnvPill">Local</span>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="tab-btn active" id="tabLogin">Login</button>
+        <button class="tab-btn" id="tabRegister">Register</button>
+        <button class="tab-btn" id="tabDriverLogin">Fahrer</button>
+      </div>
+
+      <div class="auth-body" id="loginPane">
+        <div class="lbl">E-Mail</div>
+        <input class="input" id="loginEmail" placeholder="name@mail.com" autocomplete="username"/>
+        <div class="lbl">Passwort</div>
+        <input class="input" id="loginPassword" placeholder="••••••••" type="password" autocomplete="current-password"/>
+        <button class="btn primary wide" id="btnLogin">Einloggen</button>
+        <div class="tiny muted">Hinweis: Das ist eine Demo (Daten werden im Browser gespeichert).</div>
+      </div>
+
+      <div class="auth-body hidden" id="registerPane">
+        <div class="lbl">Name</div>
+        <input class="input" id="regName" placeholder="Furkan" autocomplete="name"/>
+        <div class="lbl">E-Mail</div>
+        <input class="input" id="regEmail" placeholder="name@mail.com" autocomplete="username"/>
+        <div class="lbl">Passwort</div>
+        <input class="input" id="regPassword" placeholder="mind. 6 Zeichen" type="password" autocomplete="new-password"/>
+        <button class="btn primary wide" id="btnRegister">Account erstellen</button>
+        <div class="tiny muted">Du kannst später auf Webspace umstellen (Backend nötig für echte Sicherheit).</div>
+      </div>
+
+      <div class="auth-body hidden" id="driverLoginPane">
+        <div class="lbl">Benutzername</div>
+        <input class="input" id="driverLoginUser" placeholder="fahrer01" autocomplete="username"/>
+        <div class="lbl">Passwort</div>
+        <input class="input" id="driverLoginPassword" placeholder="••••••" type="password" autocomplete="current-password"/>
+        <button class="btn primary wide" id="btnDriverLogin">Als Fahrer einloggen</button>
+        <div class="tiny muted">Benutzername/Passwort legst du im Fahrer-Menü an.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">🚚</div>
+        <div>
+          <div class="brand-title">Nazar Dispatch</div>
+          <div class="brand-sub" id="whoami">–</div>
+        </div>
+      </div>
+
+      <div class="sidebar-card">
+        <div class="krow"><div class="k">Kunden</div><div class="v" id="kpiCustomers">0</div></div>
+        <div class="krow"><div class="k">Fahrer</div><div class="v" id="kpiDrivers">0</div></div>
+        <div class="krow"><div class="k">Heute ausgewählt</div><div class="v" id="kpiSelected">0</div></div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-btn active" data-view="map"><span class="ico">🗺️</span> Start (Karte)</button>
+        <button class="nav-btn" data-view="customers"><span class="ico">👥</span> Kundenliste</button>
+        <button class="nav-btn" data-view="drivers"><span class="ico">🧑‍✈️</span> Fahrer</button>
+        <button class="nav-btn" data-view="cars"><span class="ico">🚘</span> Autos</button>
+        <button class="nav-btn" data-view="dispatch"><span class="ico">📦</span> Zuweisen & Route</button>
+        <button class="nav-btn" data-view="routes"><span class="ico">📚</span> Verlauf &amp; Kontrolle</button>
+        <button class="nav-btn" data-view="chat"><span class="ico">💬</span> Fahrer-Chat</button>
+        <button class="nav-btn" data-view="settings"><span class="ico">⚙️</span> Settings</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="btn ghost" id="btnLogout">Logout</button>
+        <span class="tiny muted" id="versionPill">v1</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- MAP -->
+      <section id="viewMap" class="view">
+        <div class="topbar">
+          <div>
+            <div class="title">🗺️ Start – Karte</div>
+            <div class="subtitle">Wähle Kunden (Heute), weise sie Fahrern zu und zeige die optimierte Route.</div>
+          </div>
+          <div class="actions">
+            <select class="select" id="mapDriver" style="min-width:260px;"></select>
+            <button class="btn" id="btnZoomVienna">📍 Wien</button>
+            <button class="btn" id="btnClearMap">🧹 Karte leeren</button>
+          </div>
+        </div>
+
+        <div class="grid one">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Karte</div>
+              <div class="toolbar">
+                <span class="pill" id="mapStatusPill">bereit</span>
+              </div>
+            </div>
+            <div id="map" class="map"></div>
+            <div id="mapList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CUSTOMERS -->
+      <section id="viewCustomers" class="view hidden">
+        <div class="topbar">
+          <div>
+            <div class="title">👥 Kundenliste</div>
+            <div class="subtitle">Excel importieren oder manuell eintragen. Danach “Heute” auswählen.</div>
+          </div>
+          <div class="actions">
+            <label class="file-btn">
+              📥 Excel importieren
+              <input id="customersExcel" type="file" accept=".xlsx,.xls,.csv" />
+            </label>
+            <button class="btn" id="btnAddCustomerRow">➕ Zeile</button>
+            <button class="btn danger" id="btnDeleteCustomerRows">🗑️ Löschen</button>
+            <button class="btn" id="btnCheckDups">🧠 Duplikate prüfen</button>
+            <button class="btn danger" id="btnRemoveDups">🧽 Duplikate entfernen</button>
+            <button class="btn primary" id="btnSaveCustomers">💾 Speichern</button>
+          </div>
+        </div>
+
+        <div class="pane">
+          <div class="row gap8" style="margin-bottom:10px;">
+            <input class="input" id="custSearch" placeholder="🔍 Suche (Firma, Adresse, PLZ) …" style="max-width:420px;">
+            <label class="chk"><input type="checkbox" id="onlyToday"> Nur Heute</label>
+            <span class="pill" id="customersCountPill">0 Kunden</span>
+            <span class="tiny muted">Tipp: Aus Excel kopieren & hier einfügen (Strg+V) – Spalten: Firma, Adresse, PLZ, Ort, Land, Bezirk.</span>
+          </div>
+
+          <div class="tablewrap">
+            <table class="gridtable" id="customersTable">
+              <thead>
+                <tr>
+                  <th style="width:70px;">Heute</th>
+                  <th>Firmenname</th>
+                  <th>Adresse</th>
+                  <th style="width:90px;">PLZ</th>
+                  <th style="width:160px;">Ort</th>
+                  <th style="width:160px;">Land</th>
+                  <th style="width:100px;">Bezirk</th>
+                                  </tr>
+              </thead>
+              <tbody id="customersTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- CARS -->
+      <section id="viewCars" class="view hidden">
+        <div class="topbar">
+          <div>
+            <div class="title">🚘 Autos</div>
+            <div class="subtitle">Firmenautos verwalten (Spitzname, Marke, Kennzeichen, Typ).</div>
+          </div>
+          <div class="actions">
+            <button class="btn" id="btnAddCar">➕ Auto</button>
+            <button class="btn danger" id="btnDeleteCar">🗑️ Auto löschen</button>
+            <button class="btn primary" id="btnSaveCars">💾 Speichern</button>
+          </div>
+        </div>
+
+        <div class="grid one">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Auto-Liste</div>
+              <div class="toolbar"><span class="pill" id="carsCountPill">0 Autos</span></div>
+            </div>
+            <div class="pane">
+              <div class="tablewrap">
+                <table class="gridtable">
+                  <thead>
+                    <tr>
+                      <th style="width:60px;">Nr.</th>
+                      <th style="width:220px;">Spitzname</th>
+                      <th style="width:220px;">Marke</th>
+                      <th style="width:220px;">Kennzeichen</th>
+                      <th>Typ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="carsTbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DRIVERS -->
+      <section id="viewDrivers" class="view hidden">
+        <div class="topbar">
+          <div>
+            <div class="title">🧑‍✈️ Fahrer</div>
+            <div class="subtitle">Fahrer erstellen. Optional 2 Fahrer pro Auto kannst du als “Notiz” speichern.</div>
+          </div>
+          <div class="actions">
+            <button class="btn" id="btnAddDriver">➕ Fahrer</button>
+            <button class="btn danger" id="btnDeleteDriver">🗑️ Fahrer löschen</button>
+            <button class="btn primary" id="btnSaveDrivers">💾 Speichern</button>
+          </div>
+        </div>
+
+        <div class="grid one">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Fahrer-Liste</div>
+              <div class="toolbar"><span class="pill" id="driversCountPill">0 Fahrer</span></div>
+            </div>
+            <div class="pane">
+              <div class="tablewrap">
+                <table class="gridtable">
+                  <thead>
+                    <tr>
+                      <th style="width:34px;"></th>
+                      <th style="width:220px;">Name</th>
+                      <th style="width:220px;">Auto</th>
+                      <th>Notiz</th>
+                      <th style="width:180px;">Benutzername</th>
+                      <th style="width:160px;">Passwort</th>
+                    </tr>
+                  </thead>
+                  <tbody id="driversTbody"></tbody>
+                </table>
+              </div>
+              <div class="tiny muted" style="margin-top:10px;">
+                Tipp: Dieser “Fahrer-Chat” ist ein interner Chat (nur in deinem Browser). Für echten Live-Chat braucht man Backend (Websocket).
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DISPATCH -->
+      <section id="viewDispatch" class="view hidden">
+        <div class="topbar">
+          <div>
+            <div class="title">📦 Zuweisen & Route</div>
+            <div class="subtitle">Wähle Fahrer → weise “Heute”-Kunden zu → Route automatisch optimieren.</div>
+          </div>
+          <div class="actions">
+            <div class="dispatch-pick">
+              <div class="field">
+                <div class="lbl2">Fahrer</div>
+                <select class="select" id="dispatchDriver"></select>
+              </div>
+              <div class="field">
+                <div class="lbl2">Auto (für heute)</div>
+                <select class="select" id="dispatchCar"></select>
+              </div>
+            </div>
+            <button class="btn danger" id="btnUnassignDriver">❌ Zuweisung löschen</button>
+            <button class="btn primary" id="btnBuildRoute">⚡ Schnellste Route</button>
+                      </div>
+        </div>
+
+        <div class="grid two">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Heute – Kunden auswählen</div>
+              <div class="toolbar">
+                <button class="btn" id="btnSelectAllToday">Alles markieren</button>
+                <button class="btn" id="btnUnselectAllToday">Alles abwählen</button>
+              </div>
+            </div>
+            <div class="pane">
+              <div class="row gap8" style="margin-bottom:10px;">
+                <input class="input" id="dispatchSearch" placeholder="🔍 Suche…" />
+                <label class="chk"><input type="checkbox" id="dispatchOnlyToday"> Nur Heute</label>
+                <span class="pill" id="dispatchCountPill">0</span>
+              </div>
+              <select id="todayList" class="list" multiple size="18"></select>
+              <div class="tiny muted" style="margin-top:10px;">
+                Tipp: Wenn „Nur Heute“ aktiv ist, siehst du nur die heute markierten Kunden.
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Route Ergebnis</div>
+              <div class="toolbar">
+                <button class="btn" id="btnOpenGoogleMaps">🗺️ In Google Maps</button>
+                <button class="btn ghost" id="btnCopyStops">📋 Copy Stops</button>
+              </div>
+            </div>
+            <div class="pane">
+              <div class="row gap8" style="margin-bottom:10px;">
+                <div class="field">
+                  <div class="lbl2">Start-Adresse (Depot)</div>
+                  <input class="input" id="startAddress" placeholder="Depot Adresse…" />
+                </div>
+                <div class="field">
+                  <div class="lbl2">Status</div>
+                  <div class="box" id="routeStatus" style="min-height:44px;">Bereit</div>
+                </div>
+              </div>
+              <div class="box" id="routeBox"></div>
+
+              <!-- Bottom-right actions near route result -->
+              <div class="route-actions-bottom">
+                <button class="btn" id="btnSetInvoices">🧾 Offene Rechnungen</button>
+                <button class="btn" id="btnAssignSelected">✅ Ausgewählte zuweisen</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="btn primary floating-save" id="btnSaveRoute">💾 Route speichern</button>
+      </section>
+
+      <!-- ROUTES ARCHIVE -->
+      <section id="viewRoutes" class="view hidden">
+        <div class="topbar">
+          <div>
+            <div class="title">📚 Verlauf &amp; Kontrolle</div>
+            <div class="subtitle">Routen-Verlauf prüfen + abhaken, ob Rechnungen gebracht wurden.</div>
+          </div>
+          <div class="actions">
+            <button class="btn danger" id="btnDeleteSavedRoute">🗑️ Route löschen</button>
+          </div>
+        </div>
+
+        <div class="routes-layout">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Gespeicherte Routen</div>
+              <div class="toolbar">
+                <input class="input" id="routesSearch" placeholder="🔍 Suche (Fahrer/Datum)…" style="max-width:260px;" />
+              </div>
+            </div>
+            <div class="pane">
+              <div class="routes-list" id="routesList"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title" id="routesDetailTitle">Route Details</div>
+              <div class="toolbar"><span class="pill" id="routesDetailMeta">–</span></div>
+            </div>
+            <div class="pane">
+              <div class="box" id="routesDetailBox">Wähle links eine Route.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CHAT -->
+      <section id="viewChat" class="view hidden">
+        <div class="topbar">
+          <div>
+            <div class="title">💬 Fahrer-Chat</div>
+            <div class="subtitle">Einfacher Chat pro Fahrer (Demo, lokal gespeichert).</div>
+          </div>
+          <div class="actions">
+            <button class="btn danger" id="btnClearChat">🧽 Chat leeren</button>
+          </div>
+        </div>
+
+        <div class="chat-layout">
+          <div class="chat-left">
+            <div class="chat-left-head">
+              <div class="chat-left-title">Chats</div>
+              <div class="chat-left-sub" id="chatLeftSub">–</div>
+            </div>
+            <div class="chat-list" id="chatList"></div>
+          </div>
+
+          <div class="chat-right">
+            <div class="chat-right-head">
+              <div>
+                <div class="chat-right-title" id="chatHint">–</div>
+                <div class="chat-right-sub" id="chatRoomSub">–</div>
+              </div>
+              <div class="chat-right-actions">
+                <span class="pill" id="chatStatus">bereit</span>
+              </div>
+            </div>
+
+            <div class="chatbox" id="chatBox"></div>
+
+            <div class="chat-compose">
+              <input class="input" id="chatInput" placeholder="Nachricht…" />
+              <button class="btn primary" id="btnSendChat">Senden</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="viewSettings" class="view hidden">
+        <div class="topbar">
+          <div>
+            <div class="title">⚙️ Settings</div>
+            <div class="subtitle">Start-Adresse & technische Optionen.</div>
+          </div>
+          <div class="actions">
+            <button class="btn danger" id="btnClearGeoCache">🧹 Geocache löschen</button>
+            <button class="btn primary" id="btnSaveSettings">💾 Speichern</button>
+          </div>
+        </div>
+
+        <div class="grid one">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Allgemein</div>
+            </div>
+            <div class="pane">
+              <div class="row">
+                <div class="field">
+                  <div class="lbl2">Depot / Start-Adresse</div>
+                  <input class="input" id="setStartAddress" />
+                  <div class="tiny muted" style="margin-top:6px;">Diese Adresse wird als Start (source=first) für die optimierte Route genutzt.</div>
+                </div>
+              </div>
+
+              <div class="row" style="margin-top:12px;">
+                <div class="field">
+                  <div class="lbl2">Routing Engine</div>
+                  <select class="select" id="routingEngine">
+                    <option value="osrm">OSRM (kostenlos, öffentlich)</option>
+                  </select>
+                  <div class="tiny muted" style="margin-top:6px;">
+                    Für “schnellste Route” verwenden wir OSRM Trip (optimiert Reihenfolge). Für Google Optimierung brauchst du eine Google API + Billing.
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+<!-- Address Fix Modal -->
+<div id="addrFixOverlay" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <div class="modal-title">📍 Adresse korrigieren</div>
+    <div class="modal-sub" id="addrFixHint"></div>
+
+    <div class="lbl2" style="margin-top:12px;">Neue Adresse (Google Vorschläge)</div>
+
+    <!-- ✅ New recommended component -->
+    <gmp-place-autocomplete id="addrFixAuto"></gmp-place-autocomplete>
+
+    <div class="row gap8" style="margin-top:12px;">
+      <span class="pill" id="addrFixStatus">Warte auf Auswahl…</span>
+      <div class="spacer"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" id="addrFixCancel">Abbrechen</button>
+      <button class="btn primary" id="addrFixSave" disabled>✅ Speichern</button>
+    </div>
+  </div>
+</div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
