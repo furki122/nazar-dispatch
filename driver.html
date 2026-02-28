@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nazar Driver</title>
+
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0b1220">
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Nazar Driver">
+
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body class="driverapp">
+  <div class="topbar">
+    <div class="brand">🚗 Nazar Driver</div>
+    <div class="spacer"></div>
+    <button class="btn" id="btnLogoutDriver">Logout</button>
+  </div>
+
+  <div class="wrap">
+    <!-- Login (falls nicht eingeloggt) -->
+    <div class="card" id="loginCard">
+      <div class="h1">Fahrer Login</div>
+      <div class="muted" style="margin-bottom:10px;">Benutzername & Passwort eingeben</div>
+
+      <div class="row gap8">
+        <input class="input" id="driverUser" placeholder="Benutzername" autocomplete="username">
+        <input class="input" id="driverPass" placeholder="Passwort" type="password" autocomplete="current-password">
+        <button class="btn primary" id="btnDriverLogin2">Login</button>
+      </div>
+
+      <div class="tiny muted" style="margin-top:10px;">
+        Tipp iPhone: Safari → Teilen → „Zum Home-Bildschirm“
+      </div>
+    </div>
+
+    <!-- Route -->
+    <div class="card hidden" id="routeCard">
+      <div class="row gap8">
+        <div>
+          <div class="h1" id="drvTitle">Route</div>
+          <div class="muted" id="drvMeta">–</div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn primary" id="btnStartRoute">▶ Route starten</button>
+      </div>
+    </div>
+
+    <!-- Stopps -->
+    <div class="card hidden" id="stopsCard">
+      <div class="row gap8" style="align-items:center;">
+        <div class="h2">Stopps</div>
+        <div class="spacer"></div>
+        <button class="btn" id="btnRefresh">↻ Aktualisieren</button>
+      </div>
+      <div id="stopsList" class="stops"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/driver_app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    }
+  </script>
+</body>
+</html>

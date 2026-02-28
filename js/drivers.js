@@ -1,13 +1,12 @@
 import { state } from './state.js';
 import { $, norm } from './utils.js';
 import { getJson, setJson, scopedKey, mustUser } from './storage.js';
-import { upsertDriverAccount } from './auth.js';
+import { upsertDriverAccount, removeDriverAccount } from './auth.js';
 
 // ✅ Callback für Änderungen (wird in initDriversPage gesetzt)
 let onAnyChangeCb = null;
 function fireAnyChange(){
   try { onAnyChangeCb?.(); } catch (e) { console.warn(e); }
-  // let other pages (chat) refresh their driver lists
   try { window.dispatchEvent(new Event('drivers:updated')); } catch (e) { /* ignore */ }
 }
 
@@ -29,7 +28,6 @@ export function saveDrivers(){
 }
 
 export function initDriversPage(onAnyChange){
-  // ✅ merken für renderDriversTable() usw.
   onAnyChangeCb = typeof onAnyChange === "function" ? onAnyChange : null;
 
   $("btnAddDriver").addEventListener("click", ()=>{
@@ -42,17 +40,32 @@ export function initDriversPage(onAnyChange){
   $("btnDeleteDriver").addEventListener("click", ()=>{
     const tb = $("driversTbody");
     const checks = Array.from(tb.querySelectorAll('input.rowchk'));
-    const delIds = new Set(checks.filter(x=>x.checked).map(x=>x.dataset.id));
+    const delIds = new Set(checks.filter(x=>x.checked).map(x=>String(x.dataset.id)));
     if (!delIds.size) return alert("Bitte Fahrer markieren.");
-    state.drivers = state.drivers.filter(d=>!delIds.has(d.id));
+
+    const ownerId = mustUser(state);
+
+    // ✅ remove from global driver login index too
+    for (const id of delIds){
+      removeDriverAccount(ownerId, id);
+    }
+
+    state.drivers = state.drivers.filter(d=>!delIds.has(String(d.id)));
     saveDrivers();
     renderDriversTable();
     fireAnyChange();
   });
 
-  $("btnSaveDrivers").addEventListener("click", ()=>{
+  // ✅ WICHTIG: Beim "Speichern" alle Fahrer-Credentials syncen
+  $("btnSaveDrivers").addEventListener("click", async ()=>{
     readDriversToState();
     saveDrivers();
+
+    // sync usernames into global driver login store
+    for (const d of (state.drivers || [])){
+      await syncOneDriverCredentials(d, null);
+    }
+
     renderDriversTable();
     fireAnyChange();
     alert("💾 Fahrer gespeichert");
@@ -85,25 +98,25 @@ export function renderDriversTable(){
 
     tr.querySelectorAll(".cell").forEach(cell=>{
       cell.addEventListener("blur", ()=>{
-        const id = cell.dataset.id;
-        const f = cell.dataset.f;
-        const dd = state.drivers.find(x=>x.id===id);
+        const id = String(cell.dataset.id || '');
+        const f = String(cell.dataset.f || '');
+        const dd = state.drivers.find(x=>String(x.id)===id);
         if (!dd) return;
 
         dd[f] = norm(cell.textContent);
         saveDrivers();
-        // also sync credentials if username/password was set previously
-        syncOneDriverCredentials(dd).catch(e=>console.warn(e));
+
+        // sync (username already existing)
+        syncOneDriverCredentials(dd, null).catch(e=>console.warn(e));
         fireAnyChange();
       });
     });
 
-    // username/password inputs
     tr.querySelectorAll('input[data-f]').forEach(inp=>{
       inp.addEventListener('change', async ()=>{
-        const id = inp.dataset.id;
-        const f = inp.dataset.f;
-        const dd = state.drivers.find(x=>x.id===id);
+        const id = String(inp.dataset.id || '');
+        const f = String(inp.dataset.f || '');
+        const dd = state.drivers.find(x=>String(x.id)===id);
         if (!dd) return;
 
         if (f === 'username'){
@@ -116,7 +129,7 @@ export function renderDriversTable(){
 
         if (f === 'password'){
           const pw = norm(inp.value);
-          if (!pw) return; // empty means "don't change"
+          if (!pw) return;
           inp.value = '';
           await syncOneDriverCredentials(dd, pw);
           fireAnyChange();
@@ -135,30 +148,34 @@ function readDriversToState(){
   const byId = new Map();
 
   for (const el of cells){
-    const id = el.dataset.id;
-    const f = el.dataset.f;
+    const id = String(el.dataset.id || '');
+    const f = String(el.dataset.f || '');
     if (!byId.has(id)) byId.set(id, {});
     byId.get(id)[f] = norm(el.textContent);
   }
 
   for (const el of inputs){
-    const id = el.dataset.id;
-    const f = el.dataset.f;
+    const id = String(el.dataset.id || '');
+    const f = String(el.dataset.f || '');
     if (!id || !f) continue;
     if (!byId.has(id)) byId.set(id, {});
     if (f === 'username') byId.get(id).username = norm(el.value);
-    // password is not stored in state from UI table (only via sync)
   }
 
-  state.drivers = state.drivers.map(d => ({ ...d, ...(byId.get(d.id) || {}) }));
+  state.drivers = state.drivers.map(d => ({ ...d, ...(byId.get(String(d.id)) || {}) }));
 }
 
 async function syncOneDriverCredentials(driver, passwordOrNull = null){
   try{
     const ownerId = mustUser(state);
-    await upsertDriverAccount(ownerId, driver.id, driver.username || '', passwordOrNull, driver.name || '');
+
+    driver.username = norm(driver.username).toLowerCase();
+
+    // ✅ without username no login account (but driver can still exist)
+    if (!driver.username) return;
+
+    await upsertDriverAccount(ownerId, String(driver.id), driver.username, passwordOrNull, driver.name || '');
   }catch(e){
-    // show only if user actively tries to set credentials
     if (passwordOrNull) alert(e.message || String(e));
     else console.warn(e);
   }

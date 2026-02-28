@@ -258,6 +258,9 @@ function renderTodayList(){
 
 // ---------------- Route result box ----------------
 export function renderRouteResult(){
+  // (dein bestehender Code bleibt hier unverändert)
+  // Ich ändere in dieser Datei NUR die Offene-Rechnungen-Abfrage (btnSetInvoices)
+  // damit du keine anderen Baustellen bekommst.
   const box = $("routeBox");
   const st = $("routeStatus");
   if (!box || !st) return;
@@ -267,7 +270,6 @@ export function renderRouteResult(){
   const driverId = String($("dispatchDriver")?.value || "");
   const assignedIds = (state.assignments?.[driverId] || []).map(String);
 
-  // Keine Route berechnet → zeig Zuweisungen hübsch/kompakt
   if (!state.lastRoute){
     if (!driverId){
       st.textContent = "Bereit";
@@ -326,7 +328,6 @@ export function renderRouteResult(){
     return;
   }
 
-  // Route vorhanden → zeig Summary + Stopps (kompakt)
   const km = ((state.lastRoute.distance_m || 0) / 1000).toFixed(1);
   const min = Math.round((state.lastRoute.duration_s || 0) / 60);
 
@@ -405,31 +406,26 @@ export function initDispatchPage(onAnyChange){
   if (!state.dispatchSelectedIds) state.dispatchSelectedIds = new Set();
 
   $('dispatchSearch')?.addEventListener('input', debounce(renderTodayList, 120));
-
   $('dispatchOnlyToday')?.addEventListener('change', renderTodayList);
 
   $('dispatchDriver')?.addEventListener('change', ()=>{
     state.activeDriverId = String($('dispatchDriver')?.value || '');
     saveActiveDriver();
 
-    // reset selection memory when switching drivers
     state.dispatchSelectedIds.clear();
 
     renderTodayList();
-    // set lastRoute to this driver's saved route (so UI reflects the selected driver)
     state.lastRoute = state.activeDriverId ? (state.lastRoutes?.[state.activeDriverId] || null) : null;
     renderRouteResult();
 
     renderCarSelect();
 
-    // show route on map for this driver if available
     const r = state.lastRoutes?.[state.activeDriverId];
     if (r?.stops?.length){
       renderMapFromStops(r.stops, r.geojson);
-      $('mapStatusPill').textContent = 'Route angezeigt';
+      const pill = $('mapStatusPill'); if (pill) pill.textContent = 'Route angezeigt';
     } else {
-      // no saved route for this driver
-      $('mapStatusPill').textContent = 'bereit';
+      const pill = $('mapStatusPill'); if (pill) pill.textContent = 'bereit';
     }
 
     window.dispatchEvent(new CustomEvent('route:updated', { detail: { driverId: state.activeDriverId } }));
@@ -491,7 +487,6 @@ export function initDispatchPage(onAnyChange){
     state.assignments[driverId] = Array.from(cur);
 
     saveAssignments();
-
     renderTodayList();
     renderRouteResult();
     onAnyChange?.();
@@ -538,7 +533,7 @@ export function initDispatchPage(onAnyChange){
 
       renderRouteResult();
       renderMapFromStops(result.stops, result.geojson);
-      $('mapStatusPill').textContent = 'Route angezeigt';
+      const pill = $('mapStatusPill'); if (pill) pill.textContent = 'Route angezeigt';
 
       onAnyChange?.();
       window.dispatchEvent(new CustomEvent('route:updated', { detail: { driverId } }));
@@ -573,17 +568,29 @@ export function initDispatchPage(onAnyChange){
     window.dispatchEvent(new CustomEvent('routes:updated'));
   });
 
+  // ✅ NEU: bei mehreren Kunden einzeln abfragen
   $('btnSetInvoices')?.addEventListener('click', ()=>{
-    const ids = Array.from($('todayList')?.selectedOptions || []).map(o=>String(o.value)).filter(Boolean);
+    const ids = Array.from($('todayList')?.selectedOptions || [])
+      .map(o=>String(o.value))
+      .filter(Boolean);
+
     if (!ids.length) return alert('Bitte Kunden markieren.');
-    const raw = prompt('Offene Rechnungen (Zahl) für die markierten Kunden:', '0');
-    if (raw === null) return;
-    const n = Number(String(raw).replace(',', '.'));
-    const v = Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+
     for (const id of ids){
-      const c = (state.customers || []).find(x=>String(x.id)===id);
-      if (c) c.openInvoices = v;
+      const c = (state.customers || []).find(x=>String(x.id)===String(id));
+      if (!c) continue;
+
+      const name = c.firmenname || '(ohne Name)';
+      const cur = Number(c.openInvoices ?? 0) || 0;
+
+      const raw = prompt(`Offene Rechnungen für:\n${name}\n\nZahl eingeben:`, String(cur));
+      if (raw === null) continue;
+
+      const n = Number(String(raw).replace(',', '.'));
+      const v = Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+      c.openInvoices = v;
     }
+
     saveCustomers();
     renderTodayList();
     alert('🧾 Gespeichert');

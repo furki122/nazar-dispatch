@@ -5,6 +5,7 @@ const USERS_KEY = "nazar_users_v1";
 const SESSION_KEY = "nazar_session_v1";
 const DRIVER_ACCOUNTS_KEY = "nazar_driver_accounts_v1";
 
+// ---------------- users (admin) ----------------
 function loadUsers(){
   return getJson(USERS_KEY, []);
 }
@@ -19,13 +20,28 @@ export function clearSession(){
   del(SESSION_KEY);
 }
 
-function loadDriverAccounts(){
-  return getJson(DRIVER_ACCOUNTS_KEY, []);
+// ---------------- GLOBAL localStorage helpers ----------------
+// Driver accounts MUST be global, not scoped.
+function getGlobal(key, fallback){
+  try{
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  }catch{
+    return fallback;
+  }
 }
-function saveDriverAccounts(list){
-  setJson(DRIVER_ACCOUNTS_KEY, list);
+function setGlobal(key, val){
+  localStorage.setItem(key, JSON.stringify(val));
 }
 
+function loadDriverAccounts(){
+  return getGlobal(DRIVER_ACCOUNTS_KEY, []);
+}
+function saveDriverAccounts(list){
+  setGlobal(DRIVER_ACCOUNTS_KEY, list);
+}
+
+// ---------------- admin register/login ----------------
 export async function register(name, email, password){
   name = norm(name);
   email = cleanEmail(email);
@@ -64,9 +80,7 @@ export async function login(email, password){
 }
 
 // ---------------- Driver credentials ----------------
-// Drivers are created inside a dispatcher/admin account, but can login separately.
-// Stored globally in localStorage (demo) so the login overlay can find them.
-
+// Stored globally in localStorage so driver login can find them.
 export async function upsertDriverAccount(ownerUserId, driverId, username, passwordOrNull, displayName){
   ownerUserId = String(ownerUserId || '');
   driverId = String(driverId || '');
@@ -77,6 +91,16 @@ export async function upsertDriverAccount(ownerUserId, driverId, username, passw
   if (!ownerUserId || !driverId) return;
 
   const list = loadDriverAccounts();
+
+  // ensure unique username across all drivers (case-insensitive)
+  if (username){
+    const dup = list.find(a =>
+      (a.username || '').toLowerCase() === username &&
+      !(String(a.ownerUserId) === ownerUserId && String(a.driverId) === driverId)
+    );
+    if (dup) throw new Error('Fahrer-Benutzername existiert bereits.');
+  }
+
   const idx = list.findIndex(a => String(a.ownerUserId) === ownerUserId && String(a.driverId) === driverId);
   const prev = idx >= 0 ? list[idx] : null;
 
@@ -86,6 +110,7 @@ export async function upsertDriverAccount(ownerUserId, driverId, username, passw
     username: username || (prev?.username || ''),
     pass: prev?.pass || '',
     name: displayName || (prev?.name || ''),
+    ts: Date.now()
   };
 
   if (pwd){
@@ -96,18 +121,23 @@ export async function upsertDriverAccount(ownerUserId, driverId, username, passw
   if (idx >= 0) list[idx] = next;
   else list.push(next);
 
-  // Ensure unique usernames (case-insensitive)
-  if (next.username){
-    const dup = list.find(a => a !== next && (a.username || '').toLowerCase() === next.username);
-    if (dup) throw new Error('Fahrer-Benutzername existiert bereits.');
-  }
-
   saveDriverAccounts(list);
+}
+
+export function removeDriverAccount(ownerUserId, driverId){
+  ownerUserId = String(ownerUserId || '');
+  driverId = String(driverId || '');
+  if (!ownerUserId || !driverId) return;
+
+  const list = loadDriverAccounts();
+  const next = list.filter(a => !(String(a.ownerUserId) === ownerUserId && String(a.driverId) === driverId));
+  saveDriverAccounts(next);
 }
 
 export async function loginDriver(username, password){
   username = norm(username).toLowerCase();
   password = norm(password);
+
   if (!username) throw new Error('Benutzername fehlt.');
   if (!password) throw new Error('Passwort fehlt.');
 
@@ -115,6 +145,7 @@ export async function loginDriver(username, password){
   const a = list.find(x => (x.username || '').toLowerCase() === username);
   if (!a) throw new Error('Fahrer nicht gefunden.');
   if (!a.pass) throw new Error('Fahrer hat noch kein Passwort.');
+
   const pass = await sha256(password);
   if (pass !== a.pass) throw new Error('Passwort falsch.');
 

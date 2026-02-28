@@ -86,25 +86,38 @@ export async function geocodeAddress(address) {
   };
 
   const splitPlaceSuffixes = (s) => {
-    s = clean(s);
+  s = clean(s);
 
-    // SPECIAL: "...hauptstrasse" -> "... Hauptstraße"
-    s = s.replace(/([A-Za-zÄÖÜäöüß]+)\s*hauptstrasse\b/gi, "$1 Hauptstraße");
-    s = s.replace(/([A-Za-zÄÖÜäöüß]+)\s*hauptstraße\b/gi, "$1 Hauptstraße");
+  // SPECIAL: "...hauptstrasse" -> "... Hauptstraße"
+  s = s.replace(/([A-Za-zÄÖÜäöüß]+)\s*hauptstrasse\b/gi, "$1 Hauptstraße");
+  s = s.replace(/([A-Za-zÄÖÜäöüß]+)\s*hauptstraße\b/gi, "$1 Hauptstraße");
 
-    // Split glued place suffixes (NOT 'straße' to avoid breaking words like Erdbergstraße)
-    const suffixes = ["markt", "platz", "gasse", "ring", "gürtel", "allee", "weg", "kai", "steig", "hof"];
-    for (const suf of suffixes) {
-      const re = new RegExp(`([A-Za-zÄÖÜäöüß]+)(${suf})\\b`, "i");
-      s = s.replace(re, "$1 $2");
+  // Split glued place suffixes (NOT 'straße' to avoid breaking words like Erdbergstraße)
+  // WICHTIG: KEIN "hof" hier, sonst wird "Idlhofgasse" zu "Idl hof gasse"
+  const suffixes = ["markt", "platz", "gasse", "ring", "gürtel", "allee", "weg", "kai", "steig"];
+
+  // splitte NUR den Teil vor dem ersten Komma (Straßenname), und nur wenn es wirklich "geklebt" ist
+  const parts = s.split(",");
+  let head = clean(parts[0] || "");
+  const rest = parts.slice(1).join(",").trim();
+
+  for (const suf of suffixes) {
+    // nur splitten wenn head ein einzelnes Wort ist (keine Leerzeichen) und genug lang
+    // z.B. Idlhofgasse -> Idlhof gasse (ok), aber kurze Sachen bleiben unberührt
+    const re = new RegExp(`^([A-Za-zÄÖÜäöüß]{6,})(${suf})$`, "i");
+    const m = head.match(re);
+    if (m) {
+      head = `${m[1]} ${m[2]}`;
+      break;
     }
+  }
 
-    // normalize strasse again
-    s = s.replace(/\bstrasse\b/ig, "straße");
-    s = s.replace(/\bstr\.?\b/ig, "straße");
+  // normalize strasse again
+  head = head.replace(/\bstrasse\b/ig, "straße");
+  head = head.replace(/\bstr\.?\b/ig, "straße");
 
-    return clean(s);
-  };
+  return rest ? `${head}, ${rest}` : head;
+};
 
   const normalizeQuery = (s) => {
     s = stripApartment(s);

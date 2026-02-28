@@ -791,3 +791,43 @@ gmp-place-autocomplete input {
   margin-top:12px;
   flex-wrap:wrap;
 }
+
+
+.route-stop{
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-stop-main{
+  flex: 1;
+}
+
+.route-stop-x{
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: .7;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+.route-stop-x:hover{
+  opacity: 1;
+  background: rgba(255,255,255,0.06);
+}
+
+.driverapp .wrap { max-width: 980px; margin: 0 auto; padding: 14px; }
+.driverapp .topbar { display:flex; gap:10px; align-items:center; padding: 12px 14px; position: sticky; top:0; background: rgba(10,16,28,.9); backdrop-filter: blur(10px); z-index: 10; }
+.driverapp .brand { font-weight: 700; }
+.driverapp .spacer { flex:1; }
+.driverapp .card { margin-bottom: 12px; }
+.stops .stop { display:flex; gap:10px; align-items:center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.stops .nr { width: 26px; opacity:.85; font-weight:700; }
+.stops .txt { flex:1; min-width: 0; }
+.stops .t { font-weight: 650; }
+.stops .a { opacity:.75; font-size: 13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.btn.tiny { padding: 6px 10px; font-size: 12px; }
+.hidden{ display:none !important; }

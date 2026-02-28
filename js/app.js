@@ -6,23 +6,21 @@ import { loadCustomers, initCustomersPage, getTodayCustomers } from './customers
 import { loadDrivers, initDriversPage, renderDriversTable } from './drivers.js';
 import { loadCars, initCarsPage, renderCarsTable } from './cars.js';
 
-import { initMap, clearMap, zoomVienna, renderMapFromStops, renderMapFromCustomers } from './map.js';
+import { initMap, clearMap, zoomVienna, renderMapFromStops, renderMapFromCustomers, invalidateMapSize } from './map.js';
 import { loadGeoCache } from './geocode.js';
 
 import { loadAssignments, initDispatchPage, renderDriverSelects, renderRouteResult } from './dispatch.js';
 import { initChatPage } from './chat.js';
 
 import { loadSavedRoutes, initRoutesPage, renderRoutesPage } from './routes.js';
-
 import { loadSettings, initSettingsPage, renderSettings } from './settings.js';
 
-// optional (falls du es nutzt):
-// import { initAddressFixModal } from './addressFixModal.js';
+import { initAddressFixModal } from './addressFixModal.js';
 
 function setKpis() {
-  $("kpiCustomers").textContent = String(state.customers.length);
-  $("kpiDrivers").textContent = String(state.drivers.length);
-  $("kpiSelected").textContent = String(getTodayCustomers().length);
+  $("kpiCustomers").textContent = String(state.customers?.length || 0);
+  $("kpiDrivers").textContent = String(state.drivers?.length || 0);
+  $("kpiSelected").textContent = String(getTodayCustomers()?.length || 0);
 }
 
 function setView(name) {
@@ -38,18 +36,23 @@ function setView(name) {
   };
 
   for (const k of Object.keys(views)) {
-    views[k].classList.toggle("hidden", k !== name);
+    views[k]?.classList.toggle("hidden", k !== name);
   }
 
   document.querySelectorAll(".nav-btn").forEach(b => {
     b.classList.toggle("active", b.dataset.view === name);
   });
 
-  if (name === "customers" || name === "drivers" || name === "cars" || name === "dispatch" || name === 'routes') setKpis();
+  if (["customers", "drivers", "cars", "dispatch", "routes"].includes(name)) setKpis();
   if (name === "settings") renderSettings();
-  if (name === 'routes') renderRoutesPage();
+  if (name === "routes") renderRoutesPage();
 
-  if (name === 'map') showRouteForMapSelection();
+  if (name === "map") {
+    // Leaflet bugfix when switching from hidden view
+    setTimeout(() => invalidateMapSize(), 30);
+    setTimeout(() => invalidateMapSize(), 250);
+    showRouteForMapSelection();
+  }
 }
 
 function wireNav() {
@@ -58,59 +61,50 @@ function wireNav() {
   });
 }
 
-function showSelectedDriverRouteOnMapIfExists() {
-  // Prefer persisted active driver (works even if the select isn't rendered yet)
-  const driverId = String(state.activeDriverId || $("dispatchDriver")?.value || "");
-  if (!driverId) return;
-
-  // dispatch.js nutzt lastRoutes pro Fahrer
-  const r = state.lastRoutes?.[driverId] || null;
-  if (r?.stops?.length) {
-    renderMapFromStops(r.stops, r.geojson);
-    $("mapStatusPill").textContent = "Route angezeigt";
-  } else {
-    $("mapStatusPill").textContent = "bereit";
-  }
-}
-
-function renderMapDriverSelect(){
+// -------- Map dropdown (Startseite) --------
+function renderMapDriverSelect() {
   const sel = $('mapDriver');
   if (!sel) return;
 
   sel.innerHTML = '';
+
   const opt0 = document.createElement('option');
   opt0.value = '';
   opt0.textContent = 'Route wählen…';
   sel.appendChild(opt0);
 
   const list = state.isDriver && state.driverId
-    ? (state.drivers || []).filter(d=>String(d.id)===String(state.driverId))
+    ? (state.drivers || []).filter(d => String(d.id) === String(state.driverId))
     : (state.drivers || []);
 
-  for (const d of list){
+  for (const d of list) {
     const o = document.createElement('option');
     o.value = String(d.id);
     o.textContent = `🚗 ${d.name || 'Fahrer'}`;
     sel.appendChild(o);
   }
 
-  if (state.activeDriverId) sel.value = String(state.activeDriverId);
-  sel.disabled = state.isDriver;
+  if (state.mapSelectedDriverId) sel.value = String(state.mapSelectedDriverId);
+  else if (state.activeDriverId) sel.value = String(state.activeDriverId);
+
+  sel.disabled = !!state.isDriver;
 }
 
-function showRouteForMapSelection(){
+function showRouteForMapSelection() {
   const sel = $('mapDriver');
   const picked = String(sel?.value || '');
-  // If nothing selected: show customer pins (from Kundenliste)
-  if (!picked){
+  state.mapSelectedDriverId = picked;
+
+  // ✅ No driver selected => customers pins only (NO polyline)
+  if (!picked) {
     renderMapFromCustomers(state.customers || []);
     $('mapStatusPill').textContent = 'Kunden angezeigt';
     return;
   }
 
-  const driverId = picked;
-  const r = state.lastRoutes?.[driverId] || null;
-  if (r?.stops?.length){
+  // ✅ Driver selected => route markers + polyline
+  const r = state.lastRoutes?.[picked] || null;
+  if (r?.stops?.length) {
     renderMapFromStops(r.stops, r.geojson);
     $('mapStatusPill').textContent = 'Route angezeigt';
   } else {
@@ -119,19 +113,17 @@ function showRouteForMapSelection(){
   }
 }
 
-function applyRoleUI(){
+// -------- UI role handling --------
+function applyRoleUI() {
   const isDriver = !!state.isDriver;
   document.body.classList.toggle('driver-mode', isDriver);
 
-  // Hide admin-only nav buttons in driver mode
-  const hideViews = new Set(['customers','drivers','cars','dispatch','routes','settings']);
-  document.querySelectorAll('.nav-btn').forEach(b=>{
+  const hideViews = new Set(['customers', 'drivers', 'cars', 'dispatch', 'routes', 'settings']);
+  document.querySelectorAll('.nav-btn').forEach(b => {
     const v = b.dataset.view;
     if (!v) return;
     b.classList.toggle('hidden', isDriver && hideViews.has(v));
   });
-
-  // KPI card is admin-ish; keep but you can hide it in CSS via .driver-mode
 }
 
 function onAuthed(user, opts = null) {
@@ -140,7 +132,7 @@ function onAuthed(user, opts = null) {
   state.driverId = opts?.driverId ? String(opts.driverId) : '';
   state.driver = null;
 
-  if (state.isDriver){
+  if (state.isDriver) {
     $("whoami").textContent = `Fahrer • ${user.name}`;
   } else {
     $("whoami").textContent = `${user.name} • ${user.email}`;
@@ -148,7 +140,7 @@ function onAuthed(user, opts = null) {
 
   applyRoleUI();
 
-  // Daten laden
+  // ---------- load data ----------
   loadSettings();
   loadGeoCache();
   loadCustomers();
@@ -157,15 +149,13 @@ function onAuthed(user, opts = null) {
   loadAssignments();
   loadSavedRoutes();
 
-  if (state.isDriver && state.driverId){
+  if (state.isDriver && state.driverId) {
     state.driver = (state.drivers || []).find(d => String(d.id) === String(state.driverId)) || null;
-    // make sure active driver is this driver
     state.activeDriverId = String(state.driverId);
   }
 
-  // Seiten initialisieren
-  // Pages: drivers should not need customers/drivers/dispatch/settings init.
-  if (!state.isDriver){
+  // ---------- init pages ----------
+  if (!state.isDriver) {
     initCustomersPage(() => setKpis());
     initDriversPage(() => { renderDriverSelects(); setKpis(); });
     initCarsPage(() => setKpis());
@@ -173,21 +163,26 @@ function onAuthed(user, opts = null) {
     initRoutesPage();
     initSettingsPage(() => setKpis());
   }
-  initChatPage();
 
-  // Map init
+  initChatPage();
+  initAddressFixModal();
+
+  // ---------- Map ----------
   initMap();
   renderMapDriverSelect();
-  $('mapDriver')?.addEventListener('change', showRouteForMapSelection);
-  $("btnZoomVienna").addEventListener("click", zoomVienna);
-  $("btnClearMap").addEventListener("click", () => {
+  $('mapDriver')?.addEventListener('change', () => {
+    showRouteForMapSelection();
+  });
+
+  $("btnZoomVienna")?.addEventListener("click", zoomVienna);
+  $("btnClearMap")?.addEventListener("click", () => {
     clearMap();
     $("mapStatusPill").textContent = "bereit";
   });
 
-  // Dropdowns / Tabellen / Settings rendern
+  // ---------- render ----------
   renderDriverSelects();
-  if (!state.isDriver){
+  if (!state.isDriver) {
     renderDriversTable?.();
     renderCarsTable?.();
     renderSettings();
@@ -195,70 +190,60 @@ function onAuthed(user, opts = null) {
     renderRoutesPage();
   }
 
-  // Default view
   setKpis();
   setView(state.isDriver ? 'chat' : 'map');
 
-  // ✅ Start(Karte): Wenn kein Fahrer gewählt ist → Kundenpins. Sonst Route.
+  // initial map
   showRouteForMapSelection();
 
-  // ✅ Wenn Fahrer gewechselt wird, soll die Start-Karte die Route zeigen
-  if (!state.isDriver){
+  if (!state.isDriver) {
     $("dispatchDriver")?.addEventListener("change", () => {
+      state.activeDriverId = String($("dispatchDriver")?.value || '') || state.activeDriverId;
       renderMapDriverSelect();
-      // do not auto-switch map: keep current map selection (or show pins)
       showRouteForMapSelection();
     });
   }
 
-  // ✅ Wenn eine Route neu berechnet/aktualisiert wird, Start-Karte updaten
   window.addEventListener('route:updated', (e) => {
-    const id = String(e?.detail?.driverId || state.activeDriverId || '');
+    const id = String(e?.detail?.driverId || '');
     if (id) state.activeDriverId = id;
+
+    if (!state.mapSelectedDriverId) state.mapSelectedDriverId = id;
+
     renderMapDriverSelect();
     showRouteForMapSelection();
   });
 
-  // ✅ Beim Wechsel auf Start(Karte) Route erneut anzeigen
-  document.querySelectorAll('.nav-btn').forEach(b => {
-    b.addEventListener('click', () => {
-      if (b.dataset.view === 'map') showRouteForMapSelection();
-    });
-  });
-
-  // Logout
-  $("btnLogout").addEventListener("click", () => {
+  $("btnLogout")?.addEventListener("click", () => {
     if (!confirm("Logout?")) return;
     clearSession();
     location.reload();
   });
 
-  // Start-Adresse sync
-  $("startAddress").value = state.settings.startAddress || "";
-  $("setStartAddress").value = state.settings.startAddress || "";
+  if ($("startAddress")) $("startAddress").value = state.settings?.startAddress || "";
+  if ($("setStartAddress")) $("setStartAddress").value = state.settings?.startAddress || "";
 }
 
 export function main() {
   wireNav();
 
   const auth = wireAuthUI(onAuthed);
-
   const sess = getSession();
-  // Backwards compatible: old sessions had {userId}
+
   const type = sess?.type || (sess?.userId ? 'admin' : null);
 
-  if (type === 'admin' && sess?.userId){
+  if (type === 'admin' && sess?.userId) {
     const u = getUserById(sess.userId);
-    if (u){
+    if (u) {
       auth.hideOverlay();
       onAuthed(u);
       return;
     }
   }
 
-  if (type === 'driver' && sess?.ownerUserId && sess?.driverId){
+  if (type === 'driver' && sess?.ownerUserId && sess?.driverId) {
     const owner = getUserById(sess.ownerUserId);
-    if (owner){
+    if (owner) {
       auth.hideOverlay();
       onAuthed(owner, { asDriver: true, driverId: sess.driverId });
       return;
@@ -268,5 +253,4 @@ export function main() {
   auth.showOverlay();
 }
 
-// ✅ WICHTIG: Ohne das passiert beim Login nix!
 main();
