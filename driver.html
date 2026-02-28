@@ -15,50 +15,63 @@
 
   <link rel="stylesheet" href="./css/styles.css">
 </head>
+
 <body class="driverapp">
-  <div class="topbar">
-    <div class="brand">🚗 Nazar Driver</div>
-    <div class="spacer"></div>
-    <button class="btn" id="btnLogoutDriver">Logout</button>
+  <!-- Topbar -->
+  <div class="driver-topbar">
+    <div class="driver-brand">
+      <div class="driver-logo">🚗</div>
+      <div>
+        <div class="driver-title">Nazar Driver</div>
+        <div class="driver-sub" id="driverWho">Fahrer App</div>
+      </div>
+    </div>
+
+    <button class="driver-btn ghost" id="btnLogoutDriver">Logout</button>
   </div>
 
-  <div class="wrap">
-    <!-- Login (falls nicht eingeloggt) -->
-    <div class="card" id="loginCard">
-      <div class="h1">Fahrer Login</div>
-      <div class="muted" style="margin-bottom:10px;">Benutzername & Passwort eingeben</div>
+  <div class="driver-shell">
+    <div class="driver-wrap">
 
-      <div class="row gap8">
-        <input class="input" id="driverUser" placeholder="Benutzername" autocomplete="username">
-        <input class="input" id="driverPass" placeholder="Passwort" type="password" autocomplete="current-password">
-        <button class="btn primary" id="btnDriverLogin2">Login</button>
-      </div>
+      <!-- Login -->
+      <div class="card" id="loginCard">
+        <div class="h1">Fahrer Login</div>
+        <div class="muted" style="margin-bottom:10px;">Benutzername & Passwort eingeben</div>
 
-      <div class="tiny muted" style="margin-top:10px;">
-        Tipp iPhone: Safari → Teilen → „Zum Home-Bildschirm“
-      </div>
-    </div>
-
-    <!-- Route -->
-    <div class="card hidden" id="routeCard">
-      <div class="row gap8">
-        <div>
-          <div class="h1" id="drvTitle">Route</div>
-          <div class="muted" id="drvMeta">–</div>
+        <div class="row">
+          <input class="input" id="driverUser" placeholder="Benutzername" autocomplete="username">
+          <input class="input" id="driverPass" placeholder="Passwort" type="password" autocomplete="current-password">
+          <button class="btn primary" id="btnDriverLogin2">Login</button>
         </div>
-        <div class="spacer"></div>
-        <button class="btn primary" id="btnStartRoute">▶ Route starten</button>
-      </div>
-    </div>
 
-    <!-- Stopps -->
-    <div class="card hidden" id="stopsCard">
-      <div class="row gap8" style="align-items:center;">
-        <div class="h2">Stopps</div>
-        <div class="spacer"></div>
-        <button class="btn" id="btnRefresh">↻ Aktualisieren</button>
+        <div class="muted" style="margin-top:10px;">
+          Tipp iPhone: Safari → Teilen → „Zum Home-Bildschirm“
+        </div>
       </div>
-      <div id="stopsList" class="stops"></div>
+
+      <!-- Route -->
+      <div class="card hidden" id="routeCard">
+        <div class="row">
+          <div>
+            <div class="h1" id="drvTitle">Route</div>
+            <div class="muted" id="drvMeta">–</div>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn primary" id="btnStartRoute">▶ Route starten</button>
+        </div>
+      </div>
+
+      <!-- Stopps -->
+      <div class="card hidden" id="stopsCard">
+        <div class="row" style="align-items:center;">
+          <div class="h2">Stopps</div>
+          <div class="spacer"></div>
+          <button class="btn" id="btnRefresh">↻ Aktualisieren</button>
+        </div>
+
+        <div id="stopsList" class="stops"></div>
+      </div>
+
     </div>
   </div>
 

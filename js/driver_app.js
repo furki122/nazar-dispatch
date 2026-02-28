@@ -142,6 +142,9 @@ function refresh(){
   setLoggedInUI(true);
 }
 
+const el = document.getElementById('driverWho');
+if (el) el.textContent = `Eingeloggt als: ${name}`;
+
 // ---- Events ----
 document.getElementById('btnLogoutDriver')?.addEventListener('click', ()=>{
   if (!confirm('Logout?')) return;
